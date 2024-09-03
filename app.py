@@ -1,66 +1,108 @@
-from flask import Flask, request, jsonify
+import os
 import instaloader
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+import time
+import streamlit as st
 
-app = Flask(__name__)
+# Function to log in to Instagram using Selenium
+def instagram_login(username, password):
+    
+    chrome_options = webdriver.ChromeOptions()
+    chrome_options.add_argument("--headless")
+    driver = webdriver.Chrome(options=chrome_options)
+    driver.get("https://www.instagram.com/accounts/login/")
+    time.sleep(3)
 
-@app.route('/download_posts', methods=['POST'])
-def download_posts():
-    # Get Instagram credentials and target profile from the request
-    data = request.json
-    username = data.get('username')
-    password = data.get('password')
-    target_profile = data.get('target_profile')
+    # Locate and input username and password
+    username_input = driver.find_element(By.NAME, "username")
+    password_input = driver.find_element(By.NAME, "password")
+    
+    username_input.send_keys(username)
+    password_input.send_keys(password)
+    
+    # Submit login form
+    password_input.send_keys(Keys.RETURN)
+    time.sleep(5)  # Adjust sleep time as needed
+    
+    return driver
 
-    if not username or not password or not target_profile:
-        return jsonify({"error": "Username, password, and target profile must be provided"}), 400
+# Function to get posts, followers, and following using Instaloader
+def get_instagram_data(username, password, folder_name):
+    # Log in to Instagram with Selenium
+    driver = instagram_login(username, password)
 
-    try:
-        # Create an instance of Instaloader
-        loader = instaloader.Instaloader()
+    # Set up Instaloader
+    L = instaloader.Instaloader(dirname_pattern=folder_name + "/{target}")
+    L.login(username, password)
 
-        # Log in to your Instagram account
-        loader.login(username, password)
+    # Fetch profile data
+    profile = instaloader.Profile.from_username(L.context, username)
 
-        # Specify the target Instagram account
-        profile = instaloader.Profile.from_username(loader.context, target_profile)
+    # Create directory if not exists
+    if not os.path.exists(folder_name):
+        os.makedirs(folder_name)
 
-        # Iterate through each post in the profile
-        posts_data = []
-        for post in profile.get_posts():
-            # Download the post
-            loader.download_post(post, target=profile.username)
+    # Get posts data
+    posts_data = []
+    for post in profile.get_posts():
+        post_data = {
+            'caption': post.caption,
+            'likes': post.likes,
+            'comments': post.comments,
+            'date': post.date,
+            'url': post.url,
+            'video': post.is_video
+        }
+        posts_data.append(post_data)
+        # Download post image/video
+        L.download_post(post, target=username)
+    
+    # Get followers
+    followers = [follower.username for follower in profile.get_followers()]
+    
+    # Get following
+    following = [followee.username for followee in profile.get_followees()]
 
-            # Collect post details
-            post_details = {
-                "shortcode": post.shortcode,
-                "caption": post.caption,
-                "hashtags": post.caption_hashtags,
-                "mentions": post.caption_mentions,
-                "location": post.location.name if post.location else "None",
-                "date": post.date.isoformat(),
-                "likes": post.likes,
-                "comments_count": post.comments,
-                "is_video": post.is_video,
-                "video_url": post.video_url if post.is_video else "None",
-                "song": post.title if post.title else "None",
-            }
-            posts_data.append(post_details)
+    # driver.quit()
 
-            # Save comments and other post details in a text file
-            with open(f"{post.shortcode}_details.txt", "w", encoding="utf-8") as f:
-                # Write post details
-                for key, value in post_details.items():
-                    f.write(f"{key}: {value}\n")
-                
-                # Write comments
-                f.write("\nComments:\n")
-                for comment in post.get_comments():
-                    f.write(f"{comment.owner.username}: {comment.text}\n")
+    # Save posts data, followers, and following into text files
+    with open(os.path.join(folder_name, 'posts_data.txt'), 'w') as file:
+        for i, post in enumerate(posts_data, 1):
+            file.write(f"Post {i}\n")
+            for key, value in post.items():
+                file.write(f"{key.capitalize()}: {value}\n")
+            file.write("\n")
 
-        return jsonify({"message": "Posts downloaded successfully", "posts_data": posts_data})
+    with open(os.path.join(folder_name, 'followers.txt'), 'w') as file:
+        for follower in followers:
+            file.write(f"{follower}\n")
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    with open(os.path.join(folder_name, 'following.txt'), 'w') as file:
+        for followee in following:
+            file.write(f"{followee}\n")
 
-if __name__ == '__main__':
-    app.run(debug=True)
+    return posts_data, followers, following
+
+# Streamlit app
+def main():
+    st.title("Instagram Data Downloader")
+    
+    username = st.text_input("Instagram Username")
+    password = st.text_input("Instagram Password", type="password")
+    folder_name = st.text_input("Folder Name to Save Data", "instagram_data")
+
+    if st.button("Download Data"):
+        if username and password:
+            with st.spinner("Downloading data..."):
+                posts_data, followers, following = get_instagram_data(username, password, folder_name)
+                st.success(f"Data saved in folder: {folder_name}")
+                st.write(f"Number of posts downloaded: {len(posts_data)}")
+                st.write(f"Number of followers: {len(followers)}")
+                st.write(f"Number of following: {len(following)}")
+        else:
+            st.error("Please enter both username and password")
+
+if __name__ == "__main__":
+    main()
