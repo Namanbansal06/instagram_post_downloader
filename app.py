@@ -87,7 +87,7 @@ def get_instagram_data(username, password, folder_name):
 
 # Streamlit app
 def main():
-    st.title("Instagram Data Downloader")
+    st.title("Snap Crawler")
     
     username = st.text_input("Instagram Username")
     password = st.text_input("Instagram Password", type="password")
