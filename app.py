@@ -1,16 +1,15 @@
+import streamlit as st
 import os
 import instaloader
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 import time
-import streamlit as st
 
 # Function to log in to Instagram using Selenium
 def instagram_login(username, password):
-    
     chrome_options = webdriver.ChromeOptions()
-    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--headless")  # Uncomment this to run in headless mode
     driver = webdriver.Chrome(options=chrome_options)
     driver.get("https://www.instagram.com/accounts/login/")
     time.sleep(3)
@@ -65,8 +64,6 @@ def get_instagram_data(username, password, folder_name):
     # Get following
     following = [followee.username for followee in profile.get_followees()]
 
-    # driver.quit()
-
     # Save posts data, followers, and following into text files
     with open(os.path.join(folder_name, 'posts_data.txt'), 'w') as file:
         for i, post in enumerate(posts_data, 1):
@@ -83,26 +80,53 @@ def get_instagram_data(username, password, folder_name):
         for followee in following:
             file.write(f"{followee}\n")
 
-    return posts_data, followers, following
+    driver.quit()
 
-# Streamlit app
+    return {
+        "posts_data": len(posts_data),
+        "followers": len(followers),
+        "following": len(following)
+    }
+
+# Streamlit App
 def main():
-    st.title("Snap Crawler")
+    st.markdown(
+        """
+        <style>
+        .title {
+            text-align: center;
+            margin-top: 2rem;
+            font-size: 4rem;
+        }
+        .subtitle {
+            text-align: center;
+            font-size: 2rem;
+            margin-top: 0.5rem;
+        }
+        </style>
+        <h1 class="title">Snap Crawler</h1>
+        <h2 class="subtitle">Instagram</h2>
+        """,
+        unsafe_allow_html=True
+    )
     
+    # Get user input
     username = st.text_input("Instagram Username")
     password = st.text_input("Instagram Password", type="password")
-    folder_name = st.text_input("Folder Name to Save Data", "instagram_data")
-
-    if st.button("Download Data"):
+    folder_name = st.text_input("Folder Name to Save Data", value="instagram_data")
+    
+    if st.button("Start Extraction"):
         if username and password:
-            with st.spinner("Downloading data..."):
-                posts_data, followers, following = get_instagram_data(username, password, folder_name)
-                st.success(f"Data saved in folder: {folder_name}")
-                st.write(f"Number of posts downloaded: {len(posts_data)}")
-                st.write(f"Number of followers: {len(followers)}")
-                st.write(f"Number of following: {len(following)}")
+            with st.spinner("Extracting data..."):
+                result = get_instagram_data(username, password, folder_name)
+                st.success("Data Extraction Completed")
+                
+                st.write(f"Data saved in folder: `{folder_name}`")
+                st.write(f"Number of posts downloaded: {result['posts_data']}")
+                st.write(f"Number of followers: {result['followers']}")
+                st.write(f"Number of following: {result['following']}")
         else:
-            st.error("Please enter both username and password")
+            st.error("Please enter both username and password.")
 
 if __name__ == "__main__":
     main()
